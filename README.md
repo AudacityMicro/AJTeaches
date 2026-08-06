@@ -23,11 +23,19 @@ pnpm test
 
 Railway can deploy this repository as a Node service. The included `package.json` provides `build` and `start` scripts, and `pnpm-lock.yaml` pins the dependency tree. Set the service start command to `pnpm start` if Railway does not detect it automatically.
 
-## Current first version
+## Production setup
 
-- The teacher login opens the Markdown editor. The demo password is `welcome123`.
-- Published Markdown and the teacher-mode toggle are saved in the current browser using `localStorage`.
-- Student notes and email signups currently show an in-browser success state.
-- The signup retention picker defaults to one week and supports two weeks, one month, or a custom removal date.
+The app now uses a Neon Postgres database and Resend for email. The database tables are created automatically the first time the app receives a request.
 
-For a production launch, replace the demo storage with a Railway Postgres-backed API, move teacher authentication to the server, and connect the notification list to an email provider. The UI and form states are already separated so that wiring those endpoints in is straightforward.
+Copy `.env.example` to `.env.local` for local development, or add the same variables under the Railway service's Variables tab:
+
+- `DATABASE_URL` — Neon Postgres connection string.
+- `RESEND_API_KEY` — Resend sending API key.
+- `EMAIL_FROM` — a sender address on a verified Resend domain.
+- `ADMIN_EMAIL` — where private student notes should be delivered.
+- `ADMIN_PASSWORD` — the teacher password.
+- `SESSION_SECRET` — a long random value used to sign the teacher session cookie.
+
+Neon has a free plan suitable for this small board. Resend also has a free email tier. Resend's `onboarding@resend.dev` sender is available for testing, but Resend restricts that sender to the email address on the Resend account; to email students, verify a domain and set `EMAIL_FROM` to an address on it.
+
+The app stores published board/resources Markdown, private notes, and expiring notification subscriptions in Postgres. Publishing the board sends an email to active subscribers, and expired subscriptions are removed when the subscription list is used.
