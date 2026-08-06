@@ -1,7 +1,7 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { DEFAULT_MARKDOWN, DEFAULT_RESOURCES, type ContentSection } from "./content";
 
-type DatabaseClient = ReturnType<typeof neon>;
+type DatabaseClient = ReturnType<typeof postgres>;
 type ContentRow = { markdown: string; updated_at: string };
 type SubscriberRow = { email: string; expires_at: string };
 
@@ -11,7 +11,7 @@ let schemaReady: Promise<void> | undefined;
 function database() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not configured.");
-  client ??= neon(url);
+  client ??= postgres(url, { max: 1, idle_timeout: 20 });
   return client;
 }
 
