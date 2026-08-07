@@ -1,4 +1,8 @@
-import postgres from "postgres";
+// Vinext resolves the package's `workerd` export by default. Railway runs the
+// app on Node, so use Postgres.js's Node/CommonJS entry explicitly instead of
+// the Cloudflare TCP-socket implementation.
+// @ts-expect-error The package ships the Node source entry without a separate declaration.
+import postgres from "../../node_modules/postgres/src/index.js";
 import { DEFAULT_MARKDOWN, DEFAULT_RESOURCES, type ContentSection } from "./content";
 
 type DatabaseClient = ReturnType<typeof postgres>;
