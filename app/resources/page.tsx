@@ -2,12 +2,15 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { DEFAULT_RESOURCES } from "../lib/content";
+import { renderMarkdown as renderMarkdownDocument } from "../lib/markdown";
 
 function escapeHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
 function renderMarkdown(markdown: string) {
+  return renderMarkdownDocument(markdown);
+
   return markdown.split("\n").map((line) => {
     const safe = escapeHtml(line).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1 ↗</a>');
     if (safe.startsWith("### ")) return `<h3>${safe.slice(4)}</h3>`;
@@ -59,10 +62,10 @@ export default function ResourcesPage() {
   };
 
   const saveMarkdown = async () => {
-    setEditorStatus("");
+    setEditorStatus("Publishing your update...");
     const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ section: "resources", markdown: draftMarkdown }) });
     if (!response.ok) { setEditorStatus(await responseError(response)); return; }
-    setMarkdown(draftMarkdown); setEditorStatus("Published to the shared resources page.");
+    setMarkdown(draftMarkdown); setEditorStatus("Published successfully. Everyone can see these resources now.");
   };
 
   return <main className="site-shell">

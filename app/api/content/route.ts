@@ -23,13 +23,13 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   if (!isTeacherRequest(request)) return Response.json({ error: "Teacher login required." }, { status: 401 });
   if (!isDatabaseConfigured()) return Response.json({ error: "DATABASE_URL is not configured yet." }, { status: 503 });
-  const body = await request.json().catch(() => null) as { section?: ContentSection; markdown?: string } | null;
+  const body = await request.json().catch(() => null) as { section?: ContentSection; markdown?: string; notifySubscribers?: boolean } | null;
   if (!body || (body.section !== "board" && body.section !== "resources") || typeof body.markdown !== "string" || !body.markdown.trim()) {
     return Response.json({ error: "A content section and Markdown value are required." }, { status: 400 });
   }
   try {
     const content = await saveContent(body.section, body.markdown);
-    const notification = body.section === "board" ? await notifySubscribersOfUpdate(body.markdown) : undefined;
+    const notification = body.section === "board" && body.notifySubscribers !== false ? await notifySubscribersOfUpdate(body.markdown) : undefined;
     return Response.json({ ok: true, ...content, notification });
   } catch (error) {
     console.error(error);

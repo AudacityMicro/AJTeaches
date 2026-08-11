@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { DEFAULT_MARKDOWN } from "./lib/content";
+import { renderMarkdown as renderMarkdownDocument } from "./lib/markdown";
 
 type RetentionOption = "week" | "two-weeks" | "month" | "custom";
 
@@ -25,21 +26,8 @@ function dateForRetention(option: RetentionOption, customDate: string) {
   return date;
 }
 
-function escapeHtml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-}
-
 function renderMarkdown(markdown: string) {
-  return markdown.split("\n").map((line) => {
-    const safe = escapeHtml(line).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>");
-    if (safe.startsWith("### ")) return `<h3>${safe.slice(4)}</h3>`;
-    if (safe.startsWith("## ")) return `<h2>${safe.slice(3)}</h2>`;
-    if (safe.startsWith("# ")) return `<h1>${safe.slice(2)}</h1>`;
-    if (safe.startsWith("> ")) return `<blockquote>${safe.slice(2)}</blockquote>`;
-    if (safe.startsWith("- ")) return `<li>${safe.slice(2)}</li>`;
-    if (!safe.trim()) return "<div class=\"markdown-spacer\"></div>";
-    return `<p>${safe.replace(/  $/, "<br />")}</p>`;
-  }).join("").replace(/(<li>[\s\S]*?<\/li>)+/g, (list) => `<ul>${list}</ul>`);
+  return renderMarkdownDocument(markdown);
 }
 
 async function responseError(response: Response) {
@@ -64,6 +52,8 @@ export default function Home() {
   const [confirmedExpiration, setConfirmedExpiration] = useState<Date | null>(null);
   const [formError, setFormError] = useState("");
   const [editorStatus, setEditorStatus] = useState("");
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -92,11 +82,23 @@ export default function Home() {
     setIsAdmin(false);
   };
 
-  const saveMarkdown = async () => {
-    setEditorStatus("");
-    const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ section: "board", markdown: draftMarkdown }) });
-    if (!response.ok) { setEditorStatus(await responseError(response)); return; }
-    setMarkdown(draftMarkdown); setEditorStatus("Published to the shared board.");
+  const saveMarkdown = () => {
+    setPublishConfirmOpen(true);
+  };
+
+  const publishMarkdown = async (notifyStudents: boolean) => {
+    setPublishConfirmOpen(false);
+    setIsPublishing(true);
+    setEditorStatus(notifyStudents ? "Publishing and notifying students..." : "Publishing without notifying students...");
+    try {
+      const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ section: "board", markdown: draftMarkdown, notifySubscribers: notifyStudents }) });
+      if (!response.ok) { setEditorStatus(await responseError(response)); return; }
+      setMarkdown(draftMarkdown); setEditorStatus(notifyStudents ? "Published successfully. Students have been notified." : "Published successfully without notifying students.");
+    } catch {
+      setEditorStatus("The update could not be published. Please try again.");
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const handleMessage = async (event: FormEvent<HTMLFormElement>) => {
@@ -120,5 +122,6 @@ export default function Home() {
     <section className="connect-section" id="write"><div className="forms-column"><form className="message-form form-card" onSubmit={handleMessage}><div className="form-card-heading"><span className="form-number">01</span><h3>Write a note</h3></div>{messageSent ? <div className="success-state"><span className="success-check">✓</span><div><strong>Note sent.</strong><p>Your note was saved and sent to the teacher.</p></div><button type="button" className="text-button" onClick={() => setMessageSent(false)}>Send another</button></div> : <><label>Your name <span>(optional)</span><input value={messageName} onChange={(event) => setMessageName(event.target.value)} placeholder="e.g. Jordan" /></label><label>Message <textarea required value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What’s on your mind?" rows={4} /></label><button className="button button-coral" type="submit">Send privately <span>↗</span></button></>}</form><form className="updates-form form-card" id="updates" onSubmit={handleSubscribe}><div className="form-card-heading"><span className="form-number">02</span><h3>Get updates</h3></div>{subscribed ? <div className="success-state"><span className="success-check coral-check">✓</span><div><strong>You’re on the list.</strong><p>We’ll keep your email until {formatDate(confirmedExpiration ?? expirationDate)}.</p></div><button type="button" className="text-button" onClick={() => { setSubscribed(false); setConfirmedExpiration(null); }}>Change signup</button></div> : <><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><fieldset><legend>Keep me posted for…</legend><div className="retention-grid">{(Object.keys(retentionLabels) as RetentionOption[]).map((option) => <button type="button" key={option} className={`retention-option ${retention === option ? "selected" : ""}`} onClick={() => { setRetention(option); setConfirmedExpiration(null); }}>{retentionLabels[option]}{option === "week" && <span className="default-tag">default</span>}</button>)}</div></fieldset>{retention === "custom" && <label>Remove my email on<input required type="date" min={new Date().toISOString().slice(0, 10)} value={customDate} onChange={(event) => { setCustomDate(event.target.value); setConfirmedExpiration(null); }} /></label>}<p className="expiration-copy">Your email will be removed on <strong>{formatDate(expirationDate)}</strong>.</p>{formError && <p className="login-error">{formError}</p>}<button className="button button-dark" type="submit">Sign me up <span>↗</span></button></>}</form>{formError && <p className="login-error">{formError}</p>}</div></section>
     <footer className="site-footer"><span>✳ Aj's Class</span><span>Open notes · 2026</span><a href="#top">Back to top ↑</a></footer>
     {loginOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setLoginOpen(false)}><div className="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="Close login">×</button><p className="eyebrow muted">TEACHER ACCESS</p><h2 id="login-title">Welcome back.</h2><p className="login-copy">Sign in to update the board’s Markdown.</p><form onSubmit={handleLogin}><label>Password<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" /></label>{loginError && <p className="login-error">{loginError}</p>}<button className="button button-dark" type="submit">Enter teacher mode <span>↗</span></button></form><p className="demo-hint">Teacher login is configured by the site owner.</p></div></div>}
+    {publishConfirmOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setPublishConfirmOpen(false)}><div className="publish-modal" role="dialog" aria-modal="true" aria-labelledby="publish-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setPublishConfirmOpen(false)} aria-label="Close publish confirmation">x</button><p className="eyebrow muted">CONFIRM PUBLISH</p><h2 id="publish-title">How should this update go out?</h2><p className="login-copy">Choose whether the students currently signed up for updates should receive an email about this board post.</p><div className="publish-options"><button className="button button-coral" type="button" onClick={() => publishMarkdown(true)} disabled={isPublishing}>Publish and notify all students <span>-&gt;</span></button><button className="button button-dark" type="button" onClick={() => publishMarkdown(false)} disabled={isPublishing}>Publish without notifying students <span>-&gt;</span></button></div><button className="text-button publish-cancel" type="button" onClick={() => setPublishConfirmOpen(false)}>Cancel</button></div></div>}
   </main>;
 }
