@@ -15,6 +15,8 @@ function renderInline(value: string) {
   safe = safe.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (_match, alt: string, src: string) => stash(`<img src="${src}" alt="${alt}" loading="lazy" />`));
   safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label: string, href: string) => stash(`<a href="${href}" target="_blank" rel="noreferrer">${label} ↗</a>`));
   safe = safe.replace(/\[\[([^\]]+)\]\]/g, (_match, label: string) => `<span class="markdown-wikilink">${label}</span>`);
+  safe = safe.replace(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/g, "<u>$1</u>");
+  safe = safe.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
   safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   safe = safe.replace(/~~(.+?)~~/g, "<del>$1</del>");
   safe = safe.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");

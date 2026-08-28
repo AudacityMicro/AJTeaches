@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { MarkdownToolbar } from "../components/markdown-toolbar";
 import { DEFAULT_RESOURCES } from "../lib/content";
 import { renderMarkdown as renderMarkdownDocument } from "../lib/markdown";
 
@@ -36,6 +37,7 @@ export default function ResourcesPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [editorStatus, setEditorStatus] = useState("");
+  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,7 +72,7 @@ export default function ResourcesPage() {
 
   return <main className="site-shell">
     <header className="topbar"><a className="wordmark" href="/" aria-label="Aj's Class home"><span className="wordmark-mark">✳</span><span>Aj's Class</span></a><nav className="top-nav" aria-label="Main navigation"><a href="/">Board</a><a href="/resources">Resources</a><a href="/#write">Write a note</a><a href="/#updates">Get updates</a></nav>{isAdmin ? <button className="admin-pill signed-in" onClick={handleLogout}><span className="status-dot" /> Teacher mode · Log out</button> : <button className="admin-pill" onClick={() => setLoginOpen(true)}>Teacher login <span aria-hidden="true">↗</span></button>}</header>
-    <section className="resources-page"><a className="back-link" href="/">← Back to board</a><div className="resources-card">{isAdmin ? <div className="editor-wrap"><div className="editor-topline"><span>Markdown editor</span><span>Teacher mode</span></div><textarea aria-label="Edit links and resources markdown" className="markdown-editor" value={draftMarkdown} onChange={(event) => setDraftMarkdown(event.target.value)} /><div className="editor-actions"><span>{editorStatus || "Changes publish for everyone."}</span><button className="button button-dark" onClick={saveMarkdown}>Publish resources <span>↗</span></button></div></div> : <article className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />}</div></section>
+    <section className="resources-page"><a className="back-link" href="/">← Back to board</a><div className="resources-card">{isAdmin ? <div className="editor-wrap"><div className="editor-topline"><span>Markdown editor</span><span>Teacher mode</span></div><MarkdownToolbar textareaRef={editorRef} value={draftMarkdown} onChange={setDraftMarkdown} /><textarea ref={editorRef} aria-label="Edit links and resources markdown" className="markdown-editor" value={draftMarkdown} onChange={(event) => setDraftMarkdown(event.target.value)} /><div className="editor-actions"><span>{editorStatus || "Changes publish for everyone."}</span><button className="button button-dark" onClick={saveMarkdown}>Publish resources <span>↗</span></button></div></div> : <article className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />}</div></section>
     <footer className="site-footer"><span>✳ Aj's Class</span><span>Open notes · 2026</span><a href="#top">Back to top ↑</a></footer>
     {loginOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setLoginOpen(false)}><div className="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="Close login">×</button><p className="eyebrow muted">TEACHER ACCESS</p><h2 id="login-title">Welcome back.</h2><p className="login-copy">Sign in to update links and resources.</p><form onSubmit={handleLogin}><label>Password<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" /></label>{loginError && <p className="login-error">{loginError}</p>}<button className="button button-dark" type="submit">Enter teacher mode <span>↗</span></button></form><p className="demo-hint">Teacher login is configured by the site owner.</p></div></div>}
   </main>;
