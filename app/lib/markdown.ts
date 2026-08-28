@@ -2,6 +2,78 @@ function escapeHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
+function normalizeWebUrl(value: string) {
+  const url = value.trim();
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^www\./i.test(url)) return `https://${url}`;
+  return null;
+}
+
+function linkDestination(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("&lt;") && trimmed.endsWith("&gt;")) return trimmed.slice(4, -4);
+  return trimmed.split(/\s+/, 1)[0];
+}
+
+function findLinkEnd(value: string, start: number) {
+  let depth = 0;
+  for (let index = start; index < value.length; index += 1) {
+    if (value[index] === "(") depth += 1;
+    if (value[index] === ")") {
+      if (depth === 0) return index;
+      depth -= 1;
+    }
+  }
+  return -1;
+}
+
+function renderMarkdownLinks(value: string, stash: (html: string) => string) {
+  let output = "";
+  let cursor = 0;
+  let searchIndex = 0;
+
+  while (searchIndex < value.length) {
+    const match = /!?\[/.exec(value.slice(searchIndex));
+    if (!match || match.index === undefined) break;
+    const openIndex = searchIndex + match.index;
+    const labelEnd = value.indexOf("]", openIndex + 1);
+    if (labelEnd === -1 || value[labelEnd + 1] !== "(") {
+      searchIndex = openIndex + 1;
+      continue;
+    }
+    const destinationStart = labelEnd + 2;
+    const destinationEnd = findLinkEnd(value, destinationStart);
+    if (destinationEnd === -1) break;
+    const destination = linkDestination(value.slice(destinationStart, destinationEnd));
+    const href = normalizeWebUrl(destination);
+    if (!href) {
+      searchIndex = destinationEnd + 1;
+      continue;
+    }
+    const label = value.slice(openIndex + (value[openIndex] === "!" ? 2 : 1), labelEnd);
+    output += value.slice(cursor, openIndex);
+    output += stash(value[openIndex] === "!" ? `<img src="${href}" alt="${label}" loading="lazy" />` : `<a href="${href}" target="_blank" rel="noreferrer">${label} ↗</a>`);
+    cursor = destinationEnd + 1;
+    searchIndex = cursor;
+  }
+
+  output += value.slice(cursor);
+  return output;
+}
+
+function renderAutoLinks(value: string, stash: (html: string) => string) {
+  const linkedAngles = value.replace(/&lt;((?:https?:\/\/|www\.)[^\s]+?)&gt;/gi, (_match, destination: string) => {
+    const href = normalizeWebUrl(destination);
+    return href ? stash(`<a href="${href}" target="_blank" rel="noreferrer">${destination} ↗</a>`) : _match;
+  });
+  return linkedAngles.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<]+)/gi, (_match, lead: string, candidate: string) => {
+    let visible = candidate;
+    while (/[.,!?;:]$/.test(visible)) visible = visible.slice(0, -1);
+    const href = normalizeWebUrl(visible);
+    return href ? `${lead}${stash(`<a href="${href}" target="_blank" rel="noreferrer">${visible} ↗</a>`)}${candidate.slice(visible.length)}` : _match;
+  });
+}
+
 function renderInline(value: string) {
   const placeholders: string[] = [];
   const stash = (html: string) => {
@@ -12,8 +84,8 @@ function renderInline(value: string) {
 
   let safe = escapeHtml(value);
   safe = safe.replace(/`([^`]+)`/g, (_match, code: string) => stash(`<code>${code}</code>`));
-  safe = safe.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (_match, alt: string, src: string) => stash(`<img src="${src}" alt="${alt}" loading="lazy" />`));
-  safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label: string, href: string) => stash(`<a href="${href}" target="_blank" rel="noreferrer">${label} ↗</a>`));
+  safe = renderMarkdownLinks(safe, stash);
+  safe = renderAutoLinks(safe, stash);
   safe = safe.replace(/\[\[([^\]]+)\]\]/g, (_match, label: string) => `<span class="markdown-wikilink">${label}</span>`);
   safe = safe.replace(/&lt;u&gt;([\s\S]+?)&lt;\/u&gt;/g, "<u>$1</u>");
   safe = safe.replace(/==([^=\n]+)==/g, "<mark>$1</mark>");
