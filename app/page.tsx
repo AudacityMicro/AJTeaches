@@ -18,6 +18,19 @@ function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(date);
 }
 
+function publishedDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const options: Intl.DateTimeFormatOptions = { timeZone: "America/Indianapolis" };
+  const parts = new Intl.DateTimeFormat("en-US", { ...options, day: "2-digit", month: "short" }).formatToParts(date);
+  return {
+    day: parts.find((part) => part.type === "day")?.value,
+    month: parts.find((part) => part.type === "month")?.value.toUpperCase(),
+    full: new Intl.DateTimeFormat("en-US", { ...options, month: "long", day: "numeric", year: "numeric" }).format(date),
+  };
+}
+
 function dateForRetention(option: RetentionOption, customDate: string) {
   const date = new Date();
   if (option === "week") date.setDate(date.getDate() + 7);
@@ -39,6 +52,7 @@ async function responseError(response: Response) {
 export default function Home() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [draftMarkdown, setDraftMarkdown] = useState(DEFAULT_MARKDOWN);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -61,16 +75,18 @@ export default function Home() {
   useEffect(() => {
     let active = true;
     Promise.all([fetch("/api/content?section=board"), fetch("/api/auth/session")]).then(async ([contentResponse, sessionResponse]) => {
-      const content = await contentResponse.json().catch(() => null) as { markdown?: string } | null;
+      const content = await contentResponse.json().catch(() => null) as { markdown?: string; updated_at?: string } | null;
       const session = await sessionResponse.json().catch(() => null) as { authenticated?: boolean } | null;
       if (!active) return;
       if (content?.markdown) { setMarkdown(content.markdown); setDraftMarkdown(content.markdown); }
+      if (content?.updated_at) setUpdatedAt(content.updated_at);
       setIsAdmin(Boolean(session?.authenticated));
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
 
   const expirationDate = useMemo(() => dateForRetention(retention, customDate), [retention, customDate]);
+  const lastPublished = useMemo(() => publishedDate(updatedAt), [updatedAt]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -96,6 +112,8 @@ export default function Home() {
     try {
       const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ section: "board", markdown: draftMarkdown, notifySubscribers: notifyStudents }) });
       if (!response.ok) { setEditorStatus(await responseError(response)); return; }
+      const content = await response.json() as { updated_at?: string };
+      if (content.updated_at) setUpdatedAt(content.updated_at);
       setMarkdown(draftMarkdown); setEditorStatus(notifyStudents ? "Published successfully. Students have been notified." : "Published successfully without notifying students.");
     } catch {
       setEditorStatus("The update could not be published. Please try again.");
@@ -121,7 +139,7 @@ export default function Home() {
 
   return <main className="site-shell">
     <header className="topbar"><a className="wordmark" href="#top" aria-label="Aj's Class home" onClick={() => setMobileMenuOpen(false)}><span className="wordmark-mark">✳</span><span>Aj's Class</span></a><button className="mobile-menu-toggle" type="button" aria-expanded={mobileMenuOpen} aria-controls="main-navigation" aria-label={mobileMenuOpen ? "Close menu" : "Open menu"} onClick={() => setMobileMenuOpen((open) => !open)}><span className="mobile-menu-label">Menu</span><span className="mobile-menu-icon" aria-hidden="true"><span /><span /><span /></span></button><nav className={`top-nav ${mobileMenuOpen ? "open" : ""}`} id="main-navigation" aria-label="Main navigation"><a href="#board" onClick={() => setMobileMenuOpen(false)}>Board</a><a href="/resources" onClick={() => setMobileMenuOpen(false)}>Resources</a><a href="#write" onClick={() => setMobileMenuOpen(false)}>Write a note</a><a href="#updates" onClick={() => setMobileMenuOpen(false)}>Get updates</a></nav>{isAdmin ? <button className="admin-pill signed-in" onClick={() => { setMobileMenuOpen(false); handleLogout(); }}><span className="status-dot" /><span className="teacher-label-full">Teacher mode · Log out</span><span className="teacher-label-mobile">Log out</span></button> : <button className="admin-pill" onClick={() => { setMobileMenuOpen(false); setLoginOpen(true); }}>Teacher login <span aria-hidden="true">↗</span></button>}</header>
-    <section className="board-section" id="board"><div className="board-status"><span className="updated-label">Updated just now <span className="pulse" /></span></div><div className="board-card"><div className="card-rail"><span className="pin" /><span className="date-label">06<br /><small>AUG</small></span></div><div className="card-content">{isAdmin ? <div className="editor-wrap"><div className="editor-topline"><span>Markdown editor</span><span>Teacher mode</span></div><MarkdownToolbar textareaRef={editorRef} value={draftMarkdown} onChange={setDraftMarkdown} /><textarea ref={editorRef} aria-label="Edit the board markdown" className="markdown-editor" value={draftMarkdown} onChange={(event) => setDraftMarkdown(event.target.value)} /><div className="editor-actions"><span>{editorStatus || "Changes publish for everyone."}</span><button className="button button-dark" onClick={saveMarkdown}>Publish update <span>↗</span></button></div></div> : <article className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />}</div></div></section>
+    <section className="board-section" id="board"><div className="board-status">{lastPublished && <time className="updated-label" dateTime={updatedAt ?? undefined}>Updated {lastPublished.full} <span className="pulse" /></time>}</div><div className="board-card"><div className="card-rail"><span className="pin" />{lastPublished && <time className="date-label" dateTime={updatedAt ?? undefined} aria-label={`Published ${lastPublished.full}`}>{lastPublished.day}<br /><small>{lastPublished.month}</small></time>}</div><div className="card-content">{isAdmin ? <div className="editor-wrap"><div className="editor-topline"><span>Markdown editor</span><span>Teacher mode</span></div><MarkdownToolbar textareaRef={editorRef} value={draftMarkdown} onChange={setDraftMarkdown} /><textarea ref={editorRef} aria-label="Edit the board markdown" className="markdown-editor" value={draftMarkdown} onChange={(event) => setDraftMarkdown(event.target.value)} /><div className="editor-actions"><span>{editorStatus || "Changes publish for everyone."}</span><button className="button button-dark" onClick={saveMarkdown}>Publish update <span>↗</span></button></div></div> : <article className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }} />}</div></div></section>
     <section className="connect-section" id="write"><div className="forms-column"><form className="message-form form-card" onSubmit={handleMessage}><div className="form-card-heading"><span className="form-number">01</span><h3>Write a note</h3></div>{messageSent ? <div className="success-state"><span className="success-check">✓</span><div><strong>Note sent.</strong><p>Your note was saved and sent to the teacher.</p></div><button type="button" className="text-button" onClick={() => setMessageSent(false)}>Send another</button></div> : <><label>Your name <span>(optional)</span><input value={messageName} onChange={(event) => setMessageName(event.target.value)} placeholder="e.g. Jordan" /></label><label>Message <textarea required value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What’s on your mind?" rows={4} /></label><button className="button button-coral" type="submit">Send privately <span>↗</span></button></>}</form><form className="updates-form form-card" id="updates" onSubmit={handleSubscribe}><div className="form-card-heading"><span className="form-number">02</span><h3>Get updates</h3></div>{subscribed ? <div className="success-state"><span className="success-check coral-check">✓</span><div><strong>You’re on the list.</strong><p>We’ll keep your email until {formatDate(confirmedExpiration ?? expirationDate)}.</p></div><button type="button" className="text-button" onClick={() => { setSubscribed(false); setConfirmedExpiration(null); }}>Change signup</button></div> : <><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><fieldset><legend>Keep me posted for…</legend><div className="retention-grid">{(Object.keys(retentionLabels) as RetentionOption[]).map((option) => <button type="button" key={option} className={`retention-option ${retention === option ? "selected" : ""}`} onClick={() => { setRetention(option); setConfirmedExpiration(null); }}>{retentionLabels[option]}{option === "week" && <span className="default-tag">default</span>}</button>)}</div></fieldset>{retention === "custom" && <label>Remove my email on<input required type="date" min={new Date().toISOString().slice(0, 10)} value={customDate} onChange={(event) => { setCustomDate(event.target.value); setConfirmedExpiration(null); }} /></label>}<p className="expiration-copy">Your email will be removed on <strong>{formatDate(expirationDate)}</strong>.</p>{formError && <p className="login-error">{formError}</p>}<button className="button button-dark" type="submit">Sign me up <span>↗</span></button></>}</form>{formError && <p className="login-error">{formError}</p>}</div></section>
     <footer className="site-footer"><span>✳ Aj's Class</span><span>Open notes · 2026</span><a href="#top">Back to top ↑</a></footer>
     {loginOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setLoginOpen(false)}><div className="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="Close login">×</button><p className="eyebrow muted">TEACHER ACCESS</p><h2 id="login-title">Welcome back.</h2><p className="login-copy">Sign in to update the board’s Markdown.</p><form onSubmit={handleLogin}><label>Password<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" /></label>{loginError && <p className="login-error">{loginError}</p>}<button className="button button-dark" type="submit">Enter teacher mode <span>↗</span></button></form><p className="demo-hint">Teacher login is configured by the site owner.</p></div></div>}
